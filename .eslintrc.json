@@ -19,7 +19,10 @@
     "@typescript-eslint"
   ],
   "rules": {
-    "prettier/prettier": "error"
+    "prettier/prettier": "error",
+    "camelcase": "off",
+    "space-before-function-paren": "off",
+    "@typescript-eslint/no-explicit-any": "off"
   },
   "settings": {
     "import/resolver": {

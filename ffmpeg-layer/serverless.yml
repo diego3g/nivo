@@ -1,0 +1,13 @@
+service: ffmpeg-layer
+provider:
+  name: aws
+layers:
+  ffmpeg:
+    path: layer
+resources:
+  Outputs:
+    FfmpegLayerExport:
+      Value:
+        Ref: FfmpegLambdaLayer
+      Export:
+        Name: FfmpegLambdaLayer

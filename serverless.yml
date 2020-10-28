@@ -5,12 +5,12 @@ custom:
   webpack:
     webpackConfig: ./webpack.config.js
     includeModules: true
-  serverless-iam-roles-per-function:
-    defaultInherit: true # Each function will inherit the service level roles too.
-  globalTables:
-    regions:
-      - us-east-1
-    createStack: true
+  serverless-iamroles:
+    defaultInherit: true
+  # globalTables:
+  #   regions:
+  #     - us-east-1
+  #   createStack: true
   prune:
     automatic: true
     number: 3
@@ -18,9 +18,10 @@ custom:
 plugins:
   - serverless-offline
   - serverless-webpack
-  - serverless-iam-roles-per-function
-  - serverless-create-global-dynamodb-table
+  - serverless-iamroles
+  # - serverless-create-global-dynamodb-table
   - serverless-prune-plugin
+  - serverless-plugin-tracing
 
 provider:
   name: aws
@@ -44,9 +45,118 @@ provider:
       Resource: "*"
 
 functions:
-  hello:
-    handler: src/handler.hello
+  calculateSegmentsLength:
+    handler: src/functions/calculateSegmentsLength.handle
+    memorySize: 512
+    iamRoleStatements:
+      - Effect: Allow
+        Action: s3:GetObject
+        Resource: "arn:aws:s3:::nivo-uploads/*"
+      - Effect: Allow
+        Action: s3:PutObject
+        Resource: "arn:aws:s3:::nivo-segments/*"
+      - Effect: Allow
+        Action: dynamodb:PutItem
+        Resource: "*"
+    layers:
+      - arn:aws:lambda:us-east-1:011801494293:layer:ffmpeg:2
     events:
-      - http:
-          method: get
-          path: hello
+      - s3:
+          bucket: nivo-uploads
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .mkv
+          existing: true
+      - s3:
+          bucket: nivo-uploads
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .mp4
+          existing: true
+
+resources:
+  Resources:
+    # DynamoDB
+
+    dbNivoVideos:
+      # Store info about input videos
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: nivoVideos
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: "5"
+          WriteCapacityUnits: "5"
+
+    dbNivoJobs:
+      # Store info about each transcode job for a video
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: nivoJobs
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: "5"
+          WriteCapacityUnits: "5"
+
+    dbNivoSegments:
+      # Store info about each segment status from a job
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: nivoSegments
+        AttributeDefinitions:
+          - AttributeName: jobId
+            AttributeType: S
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: jobId
+            KeyType: HASH
+          - AttributeName: id
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: "5"
+          WriteCapacityUnits: "5"
+
+    # S3
+    nivoUploads:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: nivo-uploads
+        CorsConfiguration:
+          CorsRules:
+            - AllowedMethods:
+                - POST
+                - DELETE
+              AllowedOrigins:
+                - "*"
+              AllowedHeaders:
+                - "*"
+
+    nivoSegments:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: nivo-segments
+
+    nivoTranscoded:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: nivo-transcoded
+        CorsConfiguration:
+          CorsRules:
+            - AllowedMethods:
+                - GET
+                - DELETE
+              AllowedOrigins:
+                - "*"
+              AllowedHeaders:
+                - "*"
